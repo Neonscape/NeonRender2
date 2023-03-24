@@ -6,6 +6,8 @@
 #include<utility>
 #include<cstdlib>
 #include"CImg/CImg.h"
+#include<cstring>
+#include<string>
 using namespace cimg_library;
 using namespace std;
 
@@ -53,8 +55,23 @@ struct Vector3
 	{
 		return x * a.x + y * a.y + z * a.z;
 	}
+	bool is_normalized()
+	{
+		return ((x * x + y * y + z * z - 1) <= 0.0005);
+	}
+	void normalize()
+	{
+		double mod = x * x + y * y + z * z;
+		mod = sqrt(mod);
+		x /= mod;
+		y /= mod;
+		z /= mod;
+	}
+	double mod()
+	{
+		return sqrt(x * x + y * y + z * z);
+	}
 };
-
 
 double gamma;												// coefficient 2
 double global_time;											// the time when the image is captured
@@ -109,15 +126,43 @@ void read_color_table()
 	is.close();
 }
 
+spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& const sp)
+{
+	spectrum_1step res;
+	memset(res.radiance, 0, sizeof(res.radiance));
+	res.scaling_factor = sp.scaling_factor;
+	double headlight_coeff = (Beta * C * global_time) * (Beta * C * global_time) / (gamma * Beta * C * global_time - pos.x / gamma) / (gamma * Beta * C * global_time - pos.x / gamma) / gamma;
+	for (int i = 0; i < 400; i++)
+	{
+		double freq_orig = (((double)i + 380.0) / 1e9) / C;
+		double freq_trans = freq_orig * (Beta * C * global_time - pos.x) / (gamma * Beta * C * global_time - pos.x / gamma);
+		double wl = freq_trans * C * 1e9 - 380;
+		int wl_int = wl;
+		double wl_remain = wl - wl_int;
+		if (wl_int >= 400)break;
+
+
+	}
+}
+
 inline double length(double x, double y, double z)
 {
 	return sqrt(x * x + y * y + z * z);
 }
 
-Vector3 get_original_pos_in_plane(Vector3& direction)
+Vector3 get_hitpoint(Vector3& direction) // get the location of the point where the ray intersects with the transformed object
 {
+	if (!direction.is_normalized())direction.normalize();
 	double lambda = (C * global_time) / (1.0 + (direction.x / Beta));// coefficient for the direction vector. formula from paper
 	return direction * lambda;
+}
+Vector3 get_original_point(Vector3& const hit_pos)
+{
+	Vector3 res = { 0,0,0 };
+	res.x = -gamma * Beta * (C * global_time - hit_pos.mod()) + gamma * hit_pos.x;
+	res.y = hit_pos.y;
+	res.z = hit_pos.z;
+	return res;
 }
 
 void sample()
@@ -141,7 +186,8 @@ void sample()
 			double posx = SCREEN_DISTANCE;
 			double len = length(posx, posy, posz);
 			ray_direction = { posx / len, posy / len, posz / len };
-			Vector3 original_pos = get_original_pos_in_plane(ray_direction);
+			Vector3 hit = get_hitpoint(ray_direction);
+			Vector3 original_pos = get_original_point(hit);
 			int yp = original_pos.y / TILING_FACTOR;
 			int zp = original_pos.z / TILING_FACTOR;
 			if (!((yp + zp) & 1))
