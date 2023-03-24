@@ -7,6 +7,7 @@
 #include<cstdlib>
 #include"CImg/CImg.h"
 using namespace cimg_library;
+using namespace std;
 
 // defines
 
@@ -20,7 +21,7 @@ using namespace cimg_library;
 #define SCREEN_DISTANCE 1.0								// the distance of the rendering screen to the observer
 #define SCREEN_WIDTH  SCREEN_DISTANCE * 39.6 / 180.0	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
 #define SCREEN_HEIGHT SCREEN_DISTANCE * 27.0 / 180.0	// the actual height of the rendering screen.
-#define TILING_FACTOR 0.05								// how long is a pixel in the world coordinates
+#define TILING_FACTOR 0.5								// how long is a color square in the world coordinates
 
 // structures
 
@@ -33,7 +34,7 @@ struct RGB
 #
 struct spectrum_1step
 {
-	double radiance[400]; // 380 to 779, unit is nanometer
+	double radiance[400] = { 0 }; // 380 to 779, unit is nanometer
 	double scaling_factor = 0;
 
 	double operator()(int const& wavelength)const
@@ -58,16 +59,43 @@ struct Vector3
 double gamma;												// coefficient 2
 double global_time;											// the time when the image is captured
 RGB res_matrix[1920][1080];									// the image matrix, where (0, 0) is the top left corner of the rendering screen (from the observer side).
-RGB sample_matrix[1920][1080];								// the unprocessed color matrix for rendering
+bool sample_matrix[1920][1080];								// the unprocessed matrix for rendering
 double color_table[400][3], buf[400][3];
-spectrum_1step spec1;
+spectrum_1step spec1, spec2;
 
-void read_color_table()
+void read_spectrum(int i)
 {
-	std::ifstream is("color_match_table.txt");
+	string s = "spectrum_";
+	s += (char)(i + '0');
+	s += ".txt";
+	ifstream is(s);
 	if (is.bad())
 	{
-		std::cout << "failed reading color matching table file!";
+		cerr << "failed reading spectrum preset file " << i << "!";
+		exit(1);
+	}
+	spectrum_1step* pt = nullptr;
+	if (i == 1)
+	{
+		pt = &spec1;
+	}
+	else
+	{
+		pt = &spec2;
+	}
+	for (int i = 0; i < 400; i++)
+	{
+		cin >> pt->radiance[i];
+	}
+	cin >> pt->scaling_factor;
+	is.close();
+}
+void read_color_table()
+{
+	ifstream is("color_match_table.txt");
+	if (is.bad())
+	{
+		cerr << "failed reading color matching table file!";
 		exit(1);
 	}
 	double temp;
@@ -78,6 +106,7 @@ void read_color_table()
 		std::cin >> color_table[i][1];
 		std::cin >> color_table[i][2];
 	}
+	is.close();
 }
 
 inline double length(double x, double y, double z)
@@ -91,7 +120,7 @@ Vector3 get_original_pos_in_plane(Vector3& direction)
 	return direction * lambda;
 }
 
-void sample(CImg<unsigned char>& texture)
+void sample()
 {
 
 	// the sampling process, where right is positive y and up is positive z.
@@ -113,19 +142,22 @@ void sample(CImg<unsigned char>& texture)
 			double len = length(posx, posy, posz);
 			ray_direction = { posx / len, posy / len, posz / len };
 			Vector3 original_pos = get_original_pos_in_plane(ray_direction);
-			while (original_pos.y < 0)original_pos.y += texture._width * TILING_FACTOR;
-			while (original_pos.z < 0)original_pos.z += texture._height * TILING_FACTOR;
-			int y = original_pos.y / TILING_FACTOR;
-			int z = original_pos.z / TILING_FACTOR;
-			sample_matrix[y][z].R = texture(y, z, 0, 0);
-			sample_matrix[y][z].G = texture(y, z, 0, 1);
-			sample_matrix[y][z].B = texture(y, z, 0, 2);
+			int yp = original_pos.y / TILING_FACTOR;
+			int zp = original_pos.z / TILING_FACTOR;
+			if (!((yp + zp) & 1))
+			{
+				sample_matrix[i + RES_WIDTH >> 1][RES_HEIGHT - j] = 1;
+			}
 		}
 	}
+
 }
 
 int main()
 {
+	read_color_table();
+	read_spectrum(1);
+	read_spectrum(2);
 	gamma = pow((1.0 - Beta * Beta), -0.5);
 	CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 0, 3, 0);
 
