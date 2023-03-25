@@ -167,42 +167,94 @@ spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& const sp)
 }
 RGB spectrum_to_rgb(spectrum_1step& const sp, color_system& const cs)
 {
+	double	xr, xg, xb,
+		yr, yg, yb,
+		zr, zg, zb,
+		xw, yw, zw,
+		rw, gw, bw,
+		rvxr, rvxg, rvxb,
+		rvyr, rvyg, rvyb,
+		rvzr, rvzg, rvzb;
+
+	// the original matrix
+	//
+	// xr xg xb		R		X
+	// yr yg yb  *	G   =	Y
+	// zr zg zb		B		Z
+	//
+
+	xr = cs.xred;
+	xg = cs.xgreen;
+	xb = cs.xblue;
+	xw = cs.xwhite;
+	yr = cs.yred;
+	yg = cs.ygreen;
+	yb = cs.yblue;
+	yw = cs.ywhite;
+	zr = 1 - (xr + yr);
+	zg = 1 - (xg + yg);
+	zb = 1 - (xb + yb);
+	zw = 1 - (xw + yw);
+
+	rvxr = (yg * zb - yb * zg);
+	rvxg = -(yr * zb - yb * zr);
+	rvxb = (yr * zg - yg * zr);
+	rvyr = -(xg * zb - zg * xb);
+	rvyg = (xr * zb - xb * zr);
+	rvyb = -(xr * zg - xg * zr);
+	rvzr = (xg * yb - xb * yg);
+	rvzg = -(xr * yb - xb * yr);
+	rvzb = (xr * yg - xg * yr);
+
+	rw = (rvxr * xw + rvyr * yw + rvzr * zw) / yw;
+	gw = (rvxg * xw + rvyg * yw + rvzg * zw) / yw;
+	bw = (rvxb * xw + rvyb * yw + rvzb * zw) / yw;
+
+	rvxr /= rw;
+	rvyr /= rw;
+	rvzr /= rw;
+	rvxg /= gw;
+	rvyg /= gw;
+	rvzg /= gw;
+	rvxb /= bw;
+	rvyb /= bw;
+	rvzb /= bw;
+
 	for (int i = 0; i < 400; i++)
 	{
-		double X, Y, Z, T, x, y, z;
+		double X, Y, Z;
 		X = sp.radiance[i] * color_table[i][0];
 		Y = sp.radiance[i] * color_table[i][1];
 		Z = sp.radiance[i] * color_table[i][2];
 
-		double	xr, xg, xb,
-			yr, yg, yb,
-			zr, zg, zb,
-			xw, yw, zw,
-			rw, gw, bw,
-			rvxr, rvxg, rvxb,
-			rvyr, rvrg, rvyb,
-			rvzr, rvzg, rvzb;
+		Vector3 res = { 0,0,0 }; // here the x/y/z corresponds to R/G/B.
+		res.x = rvxr * X + rvyr * Y + rvzr * Z;
+		res.y = rvxg * X + rvyg * Y + rvzg * Z;
+		res.z = rvxb * X + rvyb * Y + rvzb * Z;
 
-		// the original matrix
-		//
-		// xr xg xb		R		X
-		// yr yg yb  *	G   =	Y
-		// zr zg zb		B		Z
-		//
+		//compensate the values that cannot be represented in the current color systems (indicated as negative values) with white.
+#define Min(a, b) a < b ? a : b
+		double white_compensate = Min(0, Min(res.x, Min(res.y, res.z)));
+		white_compensate = -1;
+		if (white_compensate > 0)
+		{
+			res.x += white_compensate;
+			res.y += white_compensate;
+			res.z += white_compensate;
+		}
 
-		xr = cs.xred;
-		xg = cs.xgreen;
-		xb = cs.xblue;
-		xw = cs.xwhite;
-		yr = cs.yred;
-		yg = cs.ygreen;
-		yb = cs.yblue;
-		yw = cs.ywhite;
-		zr = 1 - (xr + yr);
-		zg = 1 - (xg + yg);
-		zb = 1 - (xb + yb);
-		zw = 1 - (xw + yw);
+		//normalize RGB values to integer within [0, 255]
+#define Max(a, b) a > b ? a : b
+		double mx = Max(Max(res.x, res.y), res.z);
+		res.x /= mx;
+		res.y /= mx;
+		res.z /= mx;
 
+		res.x = (int)(255 * res.x);
+		res.y = (int)(255 * res.y);
+		res.z = (int)(255 * res.z);
+
+		return { (unsigned char)res.x, (unsigned char)res.y, (unsigned char)res.z };
 
 	}
 
@@ -255,7 +307,7 @@ void sample()
 			int zp = original_pos.z / TILING_FACTOR;
 			if (!((yp + zp) & 1))
 			{
-				sample_matrix[i + RES_WIDTH >> 1][RES_HEIGHT - j] = 1;
+
 			}
 		}
 	}
