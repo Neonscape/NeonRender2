@@ -14,17 +14,17 @@ using namespace std;
 
 // defines
 
-#define RES_WIDTH 1920									//
-#define RES_HEIGHT 1080									// the resolution of the final picture
+int RES_WIDTH = 640;									//
+int RES_HEIGHT = 360;									// the resolution of the final picture
 #define C 1												// speed of light
-#define V ((double)C * 0.8)								// velocity of the plane
+#define V ((double)C * 0.5)								// velocity of the plane
 #define Beta ((double)V  / (double)C)					// coefficient
 #define DEFAULT_COLOR {60, 60, 60}						// color used when the sampling ray fails to hit the target
 #define INITIAL_TIME -50								// the 0 is when the plane moves to the origin
-#define SCREEN_DISTANCE 1.0								// the distance of the rendering screen to the observer
+#define SCREEN_DISTANCE 0.05							// the distance of the rendering screen to the observer
 #define SCREEN_WIDTH  SCREEN_DISTANCE * 39.6 / 180.0	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
 #define SCREEN_HEIGHT SCREEN_DISTANCE * 27.0 / 180.0	// the actual height of the rendering screen.
-#define TILING_FACTOR 0.5								// how long is a color square in the world coordinates
+#define TILING_FACTOR 0.05								// how long is a color square in the world coordinates
 #define IlluminantD65 0.3127, 0.3291					
 #define GAMMA_REC709 0
 
@@ -85,7 +85,7 @@ struct color_system
 
 
 double gamma;												// coefficient 2
-double global_time;											// the time when the image is captured
+double global_time = 30;											// the time when the image is captured
 RGB res_matrix[1920][1080];									// the image matrix, where (0, 0) is the top left corner of the rendering screen (from the observer side).
 bool sample_matrix[1920][1080];								// the unprocessed matrix for rendering
 double color_table[400][3], buf[400][3];
@@ -148,25 +148,27 @@ void read_color_table()
 
 spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& sp)
 {
-	spectrum_1step res;
-	memset(res.radiance, 0, sizeof(res.radiance));
-	res.scaling_factor = sp.scaling_factor;
+	spectrum_1step res1;
+	memset(res1.radiance, 0, sizeof(res1.radiance));
+	res1.scaling_factor = sp.scaling_factor;
 	double headlight_coeff = (Beta * C * global_time) * (Beta * C * global_time) / (gamma * Beta * C * global_time - pos.x / gamma) / (gamma * Beta * C * global_time - pos.x / gamma) / gamma;
+	headlight_coeff /= 2;
 	for (int i = 0; i < 400; i++)
 	{
 		double freq_orig = (((double)i + 380.0) / 1e9) / C;
 		double freq_trans = freq_orig * (Beta * C * global_time - pos.x) / (gamma * Beta * C * global_time - pos.x / gamma);
 		double wl = freq_trans * C * 1e9 - 380;
 		int wl_int = wl;
+		if (wl_int < 0) continue;
 		double wl_remain = wl - wl_int;
 		if (wl_int >= 400)break;
-		res.radiance[wl_int] = sp.radiance[i] * headlight_coeff * (1 - wl_remain);
-		if (wl_int < 399)
+		res1.radiance[wl_int] = sp.radiance[i] * headlight_coeff * wl_remain > 0 ? (1 - wl_remain) : 1;
+		if (wl_int < 399 && wl_remain > 0)
 		{
-			res.radiance[wl_int + 1] = sp.radiance[i] * headlight_coeff * wl_remain;
+			res1.radiance[wl_int + 1] = sp.radiance[i] * headlight_coeff * wl_remain;
 		}
 	}
-	return res;
+	return res1;
 }
 RGB spectrum_to_rgb(spectrum_1step& sp, color_system& cs)
 {
@@ -275,7 +277,7 @@ inline double length(double x, double y, double z)
 Vector3 get_hitpoint(Vector3& direction) // get the location of the point where the ray intersects with the transformed object
 {
 	if (!direction.is_normalized())direction.normalize();
-	double lambda = (C * global_time) / (1.0 + (direction.x / Beta));// coefficient for the direction vector. formula from paper
+	double lambda = (double)((double)C * (double)global_time) / (double)(1.0 + (direction.x / Beta));// coefficient for the direction vector. formula from paper
 	return direction * lambda;
 }
 Vector3 get_original_point(Vector3& hit_pos)
@@ -302,7 +304,7 @@ void sample()
 	int end_y = RES_WIDTH + start_y;
 	int end_z = -RES_HEIGHT + start_z;
 
-	int cnt = 0;
+	int cnt = 0, cnt_grid = 0;
 
 	for (int i = start_y; i <= end_y; i++) // from -0.5 to 0.5
 	{
@@ -325,15 +327,17 @@ void sample()
 			ray_direction.normalize();
 			Vector3 hit = get_hitpoint(ray_direction);
 			Vector3 original_pos = get_original_point(hit);
-			if (((original_pos.y - (int)original_pos.y) <= 0.005) && ((original_pos.z - (int)original_pos.z) <= 0.005))
+
+			/*if ((abs((original_pos.y - (int)original_pos.y)) <= 0.005) && (abs((original_pos.z - (int)original_pos.z)) <= 0.005))
 			{
 				res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = { 255, 255, 255 };
+				cnt_grid++;
 				continue;
-			}
+			}*/
 			int yp = original_pos.y / TILING_FACTOR;
 			int zp = original_pos.z / TILING_FACTOR;
 			spectrum_1step temp;
-			if (!((yp + zp) & 1))
+			if (((yp + zp) % 2 == 1) || ((yp + zp) % 2 == -1))
 			{
 				temp = convert_spectrum(hit, spec1);
 			}
@@ -344,6 +348,7 @@ void sample()
 			res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
 		}
 	}
+	//cout << cnt_grid << endl;
 }
 void output_image(CImg<unsigned char>& img)
 {
@@ -363,6 +368,8 @@ int main()
 	read_color_table();
 	read_spectrum(1);
 	read_spectrum(2);
+	cout << "please input the resolution X and Y" << endl;
+	cin >> RES_WIDTH >> RES_HEIGHT;
 	gamma = pow((1.0 - Beta * Beta), -0.5);
 	CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
 	sample();
@@ -375,7 +382,8 @@ int main()
 		cerr << e.what() << endl;
 		exit(1);
 	}
-	cout << "saving image to \"result.jpg\"" << endl;
-	res_img.save("result.jpg");
+	cout << "saving image to \"result.bmp\"" << endl;
+	res_img.save("result.bmp");
+	cout << "image saved to \"result.bmp\"";
 	return 0;
 }
