@@ -17,14 +17,15 @@ using namespace std;
 int RES_WIDTH = 640;									//
 int RES_HEIGHT = 360;									// the resolution of the final picture
 #define C 1												// speed of light
-#define V ((double)C * 0.5)								// velocity of the plane
+double speed_coeff = 0.5;
+#define V ((double)C * speed_coeff)						// velocity of the plane
 #define Beta ((double)V  / (double)C)					// coefficient
 #define DEFAULT_COLOR {60, 60, 60}						// color used when the sampling ray fails to hit the target
 #define INITIAL_TIME -50								// the 0 is when the plane moves to the origin
-#define SCREEN_DISTANCE 0.05							// the distance of the rendering screen to the observer
+#define SCREEN_DISTANCE 0.5							// the distance of the rendering screen to the observer
 #define SCREEN_WIDTH  SCREEN_DISTANCE * 39.6 / 180.0	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
 #define SCREEN_HEIGHT SCREEN_DISTANCE * 27.0 / 180.0	// the actual height of the rendering screen.
-#define TILING_FACTOR 0.05								// how long is a color square in the world coordinates
+#define TILING_FACTOR 0.5								// how long is a color square in the world coordinates
 #define IlluminantD65 0.3127, 0.3291					
 #define GAMMA_REC709 0
 
@@ -83,12 +84,12 @@ struct color_system
 		gamma;
 };
 
-
 double gamma;												// coefficient 2
-double global_time = 30;											// the time when the image is captured
+double global_time = -20;									// the time when the image is captured
 RGB res_matrix[1920][1080];									// the image matrix, where (0, 0) is the top left corner of the rendering screen (from the observer side).
-bool sample_matrix[1920][1080];								// the unprocessed matrix for rendering
-double color_table[400][3], buf[400][3];
+double color_table[400][3];
+int divide = 1;
+double grid_size = 100;
 spectrum_1step spec1, spec2;
 color_system SMPTE_SYSTEM = {
 	0.630, 0.340,
@@ -145,14 +146,13 @@ void read_color_table()
 	is.close();
 	cout << "color table read" << endl;
 }
-
 spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& sp)
 {
 	spectrum_1step res1;
 	memset(res1.radiance, 0, sizeof(res1.radiance));
 	res1.scaling_factor = sp.scaling_factor;
 	double headlight_coeff = (Beta * C * global_time) * (Beta * C * global_time) / (gamma * Beta * C * global_time - pos.x / gamma) / (gamma * Beta * C * global_time - pos.x / gamma) / gamma;
-	headlight_coeff /= 2;
+	headlight_coeff /= divide;
 	for (int i = 0; i < 400; i++)
 	{
 		double freq_orig = (((double)i + 380.0) / 1e9) / C;
@@ -327,17 +327,24 @@ void sample()
 			ray_direction.normalize();
 			Vector3 hit = get_hitpoint(ray_direction);
 			Vector3 original_pos = get_original_point(hit);
-
-			/*if ((abs((original_pos.y - (int)original_pos.y)) <= 0.005) && (abs((original_pos.z - (int)original_pos.z)) <= 0.005))
+			Vector3 tmp2 = original_pos;
+			if (grid_size > 0)
 			{
-				res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = { 255, 255, 255 };
-				cnt_grid++;
-				continue;
-			}*/
+				while (tmp2.y < 0)tmp2.y += TILING_FACTOR * grid_size;
+				while (tmp2.z < 0)tmp2.z += TILING_FACTOR * grid_size;
+				while (tmp2.y > TILING_FACTOR * grid_size)tmp2.y -= TILING_FACTOR * grid_size;
+				while (tmp2.z > TILING_FACTOR * grid_size)tmp2.z -= TILING_FACTOR * grid_size;
+				if (tmp2.y < 0.001 || tmp2.z < 0.001)
+				{
+					res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = { 255, 255, 255 };
+					cnt_grid++;
+					continue;
+				}
+			}
 			int yp = original_pos.y / TILING_FACTOR;
 			int zp = original_pos.z / TILING_FACTOR;
 			spectrum_1step temp;
-			if (((yp + zp) % 2 == 1) || ((yp + zp) % 2 == -1))
+			if ((abs(yp + zp) & 1)/* || ((yp + zp) % 2 == -1)*/)
 			{
 				temp = convert_spectrum(hit, spec1);
 			}
@@ -348,7 +355,7 @@ void sample()
 			res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
 		}
 	}
-	//cout << cnt_grid << endl;
+	cout << cnt_grid << endl;
 }
 void output_image(CImg<unsigned char>& img)
 {
@@ -368,22 +375,38 @@ int main()
 	read_color_table();
 	read_spectrum(1);
 	read_spectrum(2);
-	cout << "please input the resolution X and Y" << endl;
-	cin >> RES_WIDTH >> RES_HEIGHT;
-	gamma = pow((1.0 - Beta * Beta), -0.5);
-	CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
-	sample();
-	try
+	int cnt = 0;
+	while (1)
 	{
-		output_image(res_img);
+		memset(res_matrix, 0, sizeof(res_matrix));
+		cout << "please input the resolution X and Y" << endl;
+		cin >> RES_WIDTH >> RES_HEIGHT;
+		cout << "please input the relative speed of the plane to the speed of light" << endl;
+		cin >> speed_coeff;
+		cout << "please input the global time" << endl;
+		cin >> global_time;
+		cout << "please input the divide factor of the headlight effect" << endl;
+		cin >> divide;
+		cout << "please input the grid size" << endl;
+		cin >> grid_size;
+		gamma = pow((1.0 - Beta * Beta), -0.5);
+		CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
+		sample();
+		try
+		{
+			output_image(res_img);
+		}
+		catch (CImgException& e)
+		{
+			cerr << e.what() << endl;
+			exit(1);
+		}
+		CImgDisplay disp(res_img, "result");
+		while (!disp.is_closed())disp.wait();
+		res_img.save("result.bmp");
 	}
-	catch (CImgException& e)
-	{
-		cerr << e.what() << endl;
-		exit(1);
-	}
-	cout << "saving image to \"result.bmp\"" << endl;
-	res_img.save("result.bmp");
-	cout << "image saved to \"result.bmp\"";
+	//cout << "saving image to \"result.bmp\"" << endl;
+	//res_img.save("result.bmp");
+	//cout << "image saved to \"result.bmp\"";
 	return 0;
 }
