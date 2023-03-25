@@ -8,6 +8,7 @@
 #include"CImg/CImg.h"
 #include<cstring>
 #include<string>
+#include<ctime>
 using namespace cimg_library;
 using namespace std;
 
@@ -119,10 +120,11 @@ void read_spectrum(int i)
 	}
 	for (int i = 0; i < 400; i++)
 	{
-		cin >> pt->radiance[i];
+		is >> pt->radiance[i];
 	}
-	cin >> pt->scaling_factor;
+	is >> pt->scaling_factor;
 	is.close();
+	cout << "spectrum file " << i << " read" << endl;
 }
 void read_color_table()
 {
@@ -135,15 +137,16 @@ void read_color_table()
 	double temp;
 	for (int i = 0; i < 400; i++)
 	{
-		std::cin >> temp;
-		std::cin >> color_table[i][0];
-		std::cin >> color_table[i][1];
-		std::cin >> color_table[i][2];
+		is >> temp;
+		is >> color_table[i][0];
+		is >> color_table[i][1];
+		is >> color_table[i][2];
 	}
 	is.close();
+	cout << "color table read" << endl;
 }
 
-spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& const sp)
+spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& sp)
 {
 	spectrum_1step res;
 	memset(res.radiance, 0, sizeof(res.radiance));
@@ -165,7 +168,7 @@ spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& const sp)
 	}
 	return res;
 }
-RGB spectrum_to_rgb(spectrum_1step& const sp, color_system& const cs)
+RGB spectrum_to_rgb(spectrum_1step& sp, color_system& cs)
 {
 	double	xr, xg, xb,
 		yr, yg, yb,
@@ -220,6 +223,7 @@ RGB spectrum_to_rgb(spectrum_1step& const sp, color_system& const cs)
 	rvyb /= bw;
 	rvzb /= bw;
 
+	Vector3 res = { 0,0,0 }; // here the x/y/z corresponds to R/G/B.
 	for (int i = 0; i < 400; i++)
 	{
 		double X, Y, Z;
@@ -227,36 +231,39 @@ RGB spectrum_to_rgb(spectrum_1step& const sp, color_system& const cs)
 		Y = sp.radiance[i] * color_table[i][1];
 		Z = sp.radiance[i] * color_table[i][2];
 
-		Vector3 res = { 0,0,0 }; // here the x/y/z corresponds to R/G/B.
-		res.x = rvxr * X + rvyr * Y + rvzr * Z;
-		res.y = rvxg * X + rvyg * Y + rvzg * Z;
-		res.z = rvxb * X + rvyb * Y + rvzb * Z;
-
-		//compensate the values that cannot be represented in the current color systems (indicated as negative values) with white.
-#define Min(a, b) a < b ? a : b
-		double white_compensate = Min(0, Min(res.x, Min(res.y, res.z)));
-		white_compensate = -1;
-		if (white_compensate > 0)
-		{
-			res.x += white_compensate;
-			res.y += white_compensate;
-			res.z += white_compensate;
-		}
-
-		//normalize RGB values to integer within [0, 255]
-#define Max(a, b) a > b ? a : b
-		double mx = Max(Max(res.x, res.y), res.z);
-		res.x /= mx;
-		res.y /= mx;
-		res.z /= mx;
-
-		res.x = (int)(255 * res.x);
-		res.y = (int)(255 * res.y);
-		res.z = (int)(255 * res.z);
-
-		return { (unsigned char)res.x, (unsigned char)res.y, (unsigned char)res.z };
+		res.x += rvxr * X + rvyr * Y + rvzr * Z;
+		res.y += rvxg * X + rvyg * Y + rvzg * Z;
+		res.z += rvxb * X + rvyb * Y + rvzb * Z;
 
 	}
+
+
+	//compensate the values that cannot be represented in the current color systems (indicated as negative values) with white.
+#define Min(a, b) a < b ? a : b
+	double white_compensate = Min(0, Min(res.x, Min(res.y, res.z)));
+	white_compensate *= -1;
+	if (white_compensate > 0)
+	{
+		res.x += white_compensate;
+		res.y += white_compensate;
+		res.z += white_compensate;
+	}
+
+	//normalize RGB values to integer within [0, 255]
+#define Max(a, b) a > b ? a : b
+	double mx = Max(Max(res.x, res.y), res.z);
+	res.x /= mx;
+	res.y /= mx;
+	res.z /= mx;
+
+	res.x = (int)(255 * res.x);
+	res.y = (int)(255 * res.y);
+	res.z = (int)(255 * res.z);
+
+#undef Min
+#undef Max
+
+	return { (unsigned char)res.x, (unsigned char)res.y, (unsigned char)res.z };
 
 }
 
@@ -271,7 +278,7 @@ Vector3 get_hitpoint(Vector3& direction) // get the location of the point where 
 	double lambda = (C * global_time) / (1.0 + (direction.x / Beta));// coefficient for the direction vector. formula from paper
 	return direction * lambda;
 }
-Vector3 get_original_point(Vector3& const hit_pos)
+Vector3 get_original_point(Vector3& hit_pos)
 {
 	Vector3 res = { 0,0,0 };
 	res.x = -gamma * Beta * (C * global_time - hit_pos.mod()) + gamma * hit_pos.x;
@@ -282,6 +289,9 @@ Vector3 get_original_point(Vector3& const hit_pos)
 
 void sample()
 {
+	cout << "starting the sampling process..." << endl;
+	time_t st = 0, c = 0;
+	st = clock();
 
 	// the sampling process, where right is positive y and up is positive z.
 
@@ -292,10 +302,22 @@ void sample()
 	int end_y = RES_WIDTH + start_y;
 	int end_z = -RES_HEIGHT + start_z;
 
+	int cnt = 0;
+
 	for (int i = start_y; i <= end_y; i++) // from -0.5 to 0.5
 	{
 		for (int j = start_z; j >= end_z; j--) // from 0.5 to -0.5
 		{
+			cnt++;
+			c = clock();
+			time_t del = c - st;
+			double tp = del;
+			tp /= ((double)cnt / ((double)RES_WIDTH * (double)RES_HEIGHT));
+			tp -= del;
+			del = tp;
+			del /= 1000;
+			cout << "total progress " << (int)((double)cnt / ((double)RES_WIDTH * (double)RES_HEIGHT) * 100.0) << "%, " << "ETA: " << del / 60 << "min, " << del % 60 << "s, " << "sampling (" << i << ", " << j << ")" << endl;
+
 			double posy = SCREEN_WIDTH * ((double)i / (double)RES_WIDTH);
 			double posz = SCREEN_HEIGHT * ((double)j / (double)RES_HEIGHT);
 			double posx = SCREEN_DISTANCE;
@@ -305,7 +327,7 @@ void sample()
 			Vector3 original_pos = get_original_point(hit);
 			if (((original_pos.y - (int)original_pos.y) <= 0.005) && ((original_pos.z - (int)original_pos.z) <= 0.005))
 			{
-				res_matrix[i + RES_WIDTH >> 1][RES_HEIGHT >> 1 - j] = { 255, 255, 255 };
+				res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = { 255, 255, 255 };
 				continue;
 			}
 			int yp = original_pos.y / TILING_FACTOR;
@@ -319,7 +341,7 @@ void sample()
 			{
 				temp = convert_spectrum(hit, spec2);
 			}
-			res_matrix[i + RES_WIDTH >> 1][RES_HEIGHT >> 1 - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
+			res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
 		}
 	}
 }
@@ -342,9 +364,18 @@ int main()
 	read_spectrum(1);
 	read_spectrum(2);
 	gamma = pow((1.0 - Beta * Beta), -0.5);
-	CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 0, 3, 0);
+	CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
 	sample();
-	output_image(res_img);
+	try
+	{
+		output_image(res_img);
+	}
+	catch (CImgException& e)
+	{
+		cerr << e.what() << endl;
+		exit(1);
+	}
+	cout << "saving image to \"result.jpg\"" << endl;
 	res_img.save("result.jpg");
 	return 0;
 }
