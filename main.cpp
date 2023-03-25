@@ -9,6 +9,7 @@
 #include<cstring>
 #include<string>
 #include<ctime>
+#include<thread>
 using namespace cimg_library;
 using namespace std;
 
@@ -73,6 +74,10 @@ struct Vector3
 	double mod()
 	{
 		return sqrt(x * x + y * y + z * z);
+	}
+	void print(ofstream& os)
+	{
+		os << x << ' ' << y << " " << z << endl;
 	}
 };
 struct color_system
@@ -289,42 +294,48 @@ Vector3 get_original_point(Vector3& hit_pos)
 	return res;
 }
 
-void sample()
+void sample(int st_y, int st_z, int ed_y, int ed_z, int& cnt, int id)
 {
-	cout << "starting the sampling process..." << endl;
-	time_t st = 0, c = 0;
-	st = clock();
+	string s = "thread_";
+	s += to_string(id);
+	s += ".log";
+	ofstream os(s);
+	os << "starting the sampling process " << id << endl;
+	os << "starting from (" << st_y << ", " << st_z << ") to " << ed_y << ", " << ed_z << ")" << endl;
+	//time_t st = 0, c = 0;
+	//st = clock();
 
 	// the sampling process, where right is positive y and up is positive z.
 
 	Vector3 ray_direction = { 0,0,0 }, target_pos = { 0,0,0 };
 
-	int start_y = -(RES_WIDTH >> 1);
-	int start_z = (RES_HEIGHT >> 1);
-	int end_y = RES_WIDTH + start_y;
-	int end_z = -RES_HEIGHT + start_z;
-
-	int cnt = 0, cnt_grid = 0;
+	int start_y = st_y;
+	int start_z = st_z;
+	int end_y = ed_y;
+	int end_z = ed_z;
 
 	for (int i = start_y; i <= end_y; i++) // from -0.5 to 0.5
 	{
 		for (int j = start_z; j >= end_z; j--) // from 0.5 to -0.5
 		{
 			cnt++;
-			c = clock();
-			time_t del = c - st;
-			double tp = del;
-			tp /= ((double)cnt / ((double)RES_WIDTH * (double)RES_HEIGHT));
-			tp -= del;
-			del = tp;
-			del /= 1000;
-			cout << "total progress " << (int)((double)cnt / ((double)RES_WIDTH * (double)RES_HEIGHT) * 100.0) << "%, " << "ETA: " << del / 60 << "min, " << del % 60 << "s, " << "sampling (" << i << ", " << j << ")" << endl;
+			//c = clock();
+			//time_t del = c - st;
+			//double tp = del;
+			//tp /= ((double)cnt / ((double)RES_WIDTH * (double)RES_HEIGHT));
+			//tp -= del;
+			//del = tp;
+			//del /= 1000;
+			//cout << "total progress " << (int)((double)cnt / ((double)RES_WIDTH * (double)RES_HEIGHT) * 100.0) << "%, " << "ETA: " << del / 60 << "min, " << del % 60 << "s, " << "sampling (" << i << ", " << j << ")" << endl;
 
 			double posy = SCREEN_WIDTH * ((double)i / (double)RES_WIDTH);
 			double posz = SCREEN_HEIGHT * ((double)j / (double)RES_HEIGHT);
 			double posx = SCREEN_DISTANCE;
 			ray_direction = { posx, posy, posz };
 			ray_direction.normalize();
+			os << "ray dir is ";
+			ray_direction.print(os);
+			//os << "for pos (" << i << ", " << j << "), ray dir is" << ray_direction.x << " " << ray_direction.y << " " << ray_direction.z << endl;
 			Vector3 hit = get_hitpoint(ray_direction);
 			Vector3 original_pos = get_original_point(hit);
 			Vector3 tmp2 = original_pos;
@@ -337,7 +348,6 @@ void sample()
 				if (tmp2.y < 0.001 || tmp2.z < 0.001)
 				{
 					res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = { 255, 255, 255 };
-					cnt_grid++;
 					continue;
 				}
 			}
@@ -346,16 +356,19 @@ void sample()
 			spectrum_1step temp;
 			if ((abs(yp + zp) & 1)/* || ((yp + zp) % 2 == -1)*/)
 			{
+				os << "converting spectrum 1";
 				temp = convert_spectrum(hit, spec1);
 			}
 			else
 			{
+				os << "converting spectrum 2";
 				temp = convert_spectrum(hit, spec2);
 			}
+			os << "for " << i << "and" << j << endl;
 			res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
 		}
 	}
-	cout << cnt_grid << endl;
+	os.close();
 }
 void output_image(CImg<unsigned char>& img)
 {
@@ -370,17 +383,24 @@ void output_image(CImg<unsigned char>& img)
 	}
 }
 
+int threads = 1;
+int cnts[20];
 int main()
 {
 	read_color_table();
 	read_spectrum(1);
 	read_spectrum(2);
 	int cnt = 0;
+	cout << "please input thread number / 2" << endl;
+	cin >> threads;
+	int del_y = RES_WIDTH / threads;
+
 	while (1)
 	{
 		memset(res_matrix, 0, sizeof(res_matrix));
 		cout << "please input the resolution X and Y" << endl;
 		cin >> RES_WIDTH >> RES_HEIGHT;
+		if (!RES_WIDTH && !RES_HEIGHT)break;
 		cout << "please input the relative speed of the plane to the speed of light" << endl;
 		cin >> speed_coeff;
 		cout << "please input the global time" << endl;
@@ -391,7 +411,18 @@ int main()
 		cin >> grid_size;
 		gamma = pow((1.0 - Beta * Beta), -0.5);
 		CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
-		sample();
+		thread tlist[20];
+		for (int i = 0; i < threads; i++)
+		{
+			tlist[i * 2] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), -(RES_HEIGHT >> 1), -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, 0, ref(cnts[i * 2]), i * 2 + 1);
+			tlist[i * 2 + 1] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), 1, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, (RES_WIDTH >> 1), ref(cnts[i * 2 + 1]), i * 2 + 2);
+			//sample((-(RES_WIDTH >> 1) + del_y * i), -(RES_HEIGHT >> 1), -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, 0, cnts[i * 2]);
+			//sample((-(RES_WIDTH >> 1) + del_y * i), 1, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, (RES_WIDTH >> 1), cnts[i * 2 + 1]);
+		}
+		for (auto& t : tlist)
+		{
+			t.join();
+		}
 		try
 		{
 			output_image(res_img);
