@@ -24,6 +24,8 @@ using namespace std;
 #define SCREEN_WIDTH  SCREEN_DISTANCE * 39.6 / 180.0	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
 #define SCREEN_HEIGHT SCREEN_DISTANCE * 27.0 / 180.0	// the actual height of the rendering screen.
 #define TILING_FACTOR 0.5								// how long is a color square in the world coordinates
+#define IlluminantD65 0.3127, 0.3291					
+#define GAMMA_REC709 0
 
 // structures
 
@@ -33,7 +35,6 @@ struct RGB
 	unsigned char G;
 	unsigned char B;
 };
-#
 struct spectrum_1step
 {
 	double radiance[400] = { 0 }; // 380 to 779, unit is nanometer
@@ -72,6 +73,15 @@ struct Vector3
 		return sqrt(x * x + y * y + z * z);
 	}
 };
+struct color_system
+{
+	double xred, yred,
+		xgreen, ygreen,
+		xblue, yblue,
+		xwhite, ywhite,
+		gamma;
+};
+
 
 double gamma;												// coefficient 2
 double global_time;											// the time when the image is captured
@@ -79,6 +89,13 @@ RGB res_matrix[1920][1080];									// the image matrix, where (0, 0) is the top
 bool sample_matrix[1920][1080];								// the unprocessed matrix for rendering
 double color_table[400][3], buf[400][3];
 spectrum_1step spec1, spec2;
+color_system SMPTE_SYSTEM = {
+	0.630, 0.340,
+	0.310, 0.595,
+	0.155, 0.070,
+	IlluminantD65,
+	GAMMA_REC709
+};
 
 void read_spectrum(int i)
 {
@@ -140,9 +157,55 @@ spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& const sp)
 		int wl_int = wl;
 		double wl_remain = wl - wl_int;
 		if (wl_int >= 400)break;
+		res.radiance[wl_int] = sp.radiance[i] * headlight_coeff * (1 - wl_remain);
+		if (wl_int < 399)
+		{
+			res.radiance[wl_int + 1] = sp.radiance[i] * headlight_coeff * wl_remain;
+		}
+	}
+	return res;
+}
+RGB spectrum_to_rgb(spectrum_1step& const sp, color_system& const cs)
+{
+	for (int i = 0; i < 400; i++)
+	{
+		double X, Y, Z, T, x, y, z;
+		X = sp.radiance[i] * color_table[i][0];
+		Y = sp.radiance[i] * color_table[i][1];
+		Z = sp.radiance[i] * color_table[i][2];
+
+		double	xr, xg, xb,
+			yr, yg, yb,
+			zr, zg, zb,
+			xw, yw, zw,
+			rw, gw, bw,
+			rvxr, rvxg, rvxb,
+			rvyr, rvrg, rvyb,
+			rvzr, rvzg, rvzb;
+
+		// the original matrix
+		//
+		// xr xg xb		R		X
+		// yr yg yb  *	G   =	Y
+		// zr zg zb		B		Z
+		//
+
+		xr = cs.xred;
+		xg = cs.xgreen;
+		xb = cs.xblue;
+		xw = cs.xwhite;
+		yr = cs.yred;
+		yg = cs.ygreen;
+		yb = cs.yblue;
+		yw = cs.ywhite;
+		zr = 1 - (xr + yr);
+		zg = 1 - (xg + yg);
+		zb = 1 - (xb + yb);
+		zw = 1 - (xw + yw);
 
 
 	}
+
 }
 
 inline double length(double x, double y, double z)
