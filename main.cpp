@@ -299,19 +299,41 @@ void sample()
 			double posy = SCREEN_WIDTH * ((double)i / (double)RES_WIDTH);
 			double posz = SCREEN_HEIGHT * ((double)j / (double)RES_HEIGHT);
 			double posx = SCREEN_DISTANCE;
-			double len = length(posx, posy, posz);
-			ray_direction = { posx / len, posy / len, posz / len };
+			ray_direction = { posx, posy, posz };
+			ray_direction.normalize();
 			Vector3 hit = get_hitpoint(ray_direction);
 			Vector3 original_pos = get_original_point(hit);
+			if (((original_pos.y - (int)original_pos.y) <= 0.005) && ((original_pos.z - (int)original_pos.z) <= 0.005))
+			{
+				res_matrix[i + RES_WIDTH >> 1][RES_HEIGHT >> 1 - j] = { 255, 255, 255 };
+				continue;
+			}
 			int yp = original_pos.y / TILING_FACTOR;
 			int zp = original_pos.z / TILING_FACTOR;
+			spectrum_1step temp;
 			if (!((yp + zp) & 1))
 			{
-
+				temp = convert_spectrum(hit, spec1);
 			}
+			else
+			{
+				temp = convert_spectrum(hit, spec2);
+			}
+			res_matrix[i + RES_WIDTH >> 1][RES_HEIGHT >> 1 - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
 		}
 	}
-
+}
+void output_image(CImg<unsigned char>& img)
+{
+	for (int i = 0; i < RES_WIDTH; i++)
+	{
+		for (int j = 0; j < RES_HEIGHT; j++)
+		{
+			img(i, j, 0, 0) = res_matrix[i][j].R;
+			img(i, j, 0, 1) = res_matrix[i][j].G;
+			img(i, j, 0, 2) = res_matrix[i][j].B;
+		}
+	}
 }
 
 int main()
@@ -321,6 +343,8 @@ int main()
 	read_spectrum(2);
 	gamma = pow((1.0 - Beta * Beta), -0.5);
 	CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 0, 3, 0);
-
-
+	sample();
+	output_image(res_img);
+	res_img.save("result.jpg");
+	return 0;
 }

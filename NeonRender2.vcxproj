@@ -134,6 +134,8 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="color_match_table.txt" />
+    <Text Include="spectrum_1.txt" />
+    <Text Include="spectrum_2.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

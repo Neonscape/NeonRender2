@@ -23,5 +23,7 @@
     <Text Include="color_match_table.txt">
       <Filter>资源文件</Filter>
     </Text>
+    <Text Include="spectrum_1.txt" />
+    <Text Include="spectrum_2.txt" />
   </ItemGroup>
 </Project>
