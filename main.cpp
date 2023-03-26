@@ -22,11 +22,11 @@ double speed_coeff = 0.5;
 #define V ((double)C * speed_coeff)						// velocity of the plane
 #define Beta ((double)V  / (double)C)					// coefficient
 #define DEFAULT_COLOR {60, 60, 60}						// color used when the sampling ray fails to hit the target
-#define INITIAL_TIME -50								// the 0 is when the plane moves to the origin
-#define SCREEN_DISTANCE 0.5							// the distance of the rendering screen to the observer
-#define SCREEN_WIDTH  SCREEN_DISTANCE * 39.6 / 180.0	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
-#define SCREEN_HEIGHT SCREEN_DISTANCE * 27.0 / 180.0	// the actual height of the rendering screen.
-#define TILING_FACTOR 0.5								// how long is a color square in the world coordinates
+int INITIAL_TIME = -20;								// the 0 is when the plane moves to the origin
+#define SCREEN_DISTANCE 1000							// the distance of the rendering screen to the observer
+int SCREEN_WIDTH = SCREEN_DISTANCE * 39.6 / 180.0;	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
+int SCREEN_HEIGHT = SCREEN_DISTANCE * 27.0 / 180.0;	// the actual height of the rendering screen.
+int TILING_FACTOR = 10;							// how long is a color square in the world coordinates
 #define IlluminantD65 0.3127, 0.3291					
 #define GAMMA_REC709 0
 
@@ -323,6 +323,12 @@ void sample(int st_y, int st_z, int ed_y, int ed_z, int& cnt, int id)
 		for (int j = start_z; j >= end_z; j--) // from 0.5 to -0.5
 		{
 			cnt++;
+			if ((i + (RES_WIDTH >> 1)) < 0 || ((RES_HEIGHT >> 1) - j) < 0) continue;
+			if ((i + (RES_WIDTH >> 1)) >= RES_WIDTH || ((RES_HEIGHT >> 1) - j) >= RES_HEIGHT)
+			{
+				//DebugBreak();
+				continue;
+			}
 			//c = clock();
 			//time_t del = c - st;
 			//double tp = del;
@@ -355,10 +361,10 @@ void sample(int st_y, int st_z, int ed_y, int ed_z, int& cnt, int id)
 					continue;
 				}
 			}
-			int yp = original_pos.y / TILING_FACTOR;
-			int zp = original_pos.z / TILING_FACTOR;
+			double yp = original_pos.y / TILING_FACTOR;
+			double zp = original_pos.z / TILING_FACTOR;
 			spectrum_1step temp;
-			if ((abs(yp + zp) & 1)/* || ((yp + zp) % 2 == -1)*/)
+			if (((int)(floor(yp) + floor(zp)) & 1))
 			{
 				os << "converting spectrum 1";
 				temp = convert_spectrum(hit, spec1);
@@ -400,7 +406,6 @@ int main()
 	int cnt = 0;
 	cout << "please input thread number / 2" << endl;
 	cin >> threads;
-	int del_y = RES_WIDTH / threads;
 
 	while (1)
 	{
@@ -416,9 +421,15 @@ int main()
 		cin >> divide;
 		cout << "please input the grid size" << endl;
 		cin >> grid_size;
+		cout << "please input the tiling factor" << endl;
+		cin >> TILING_FACTOR;
+		cout << "please input the initial time" << endl;
+		cin >> INITIAL_TIME;
+		SCREEN_HEIGHT = SCREEN_WIDTH * 27 / 39.6;
+		int del_y = RES_WIDTH / threads;
 		gamma = pow((1.0 - Beta * Beta), -0.5);
 		CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
-		thread tlist[20];
+		thread tlist[100];
 		for (int i = 0; i < threads; i++)
 		{
 			tlist[i * 2] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), 0, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, -(RES_HEIGHT >> 1), ref(cnts[i * 2]), i * 2 + 1);
@@ -428,7 +439,7 @@ int main()
 		}
 		for (auto& t : tlist)
 		{
-			t.join();
+			if (t.joinable()) t.join();
 		}
 		try
 		{
