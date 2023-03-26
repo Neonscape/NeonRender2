@@ -25,7 +25,7 @@ double speed_coeff = 0.5;
 #define SCREEN_DISTANCE 0.5							// the distance of the rendering screen to the observer
 #define SCREEN_WIDTH  SCREEN_DISTANCE * 39.6 / 180.0	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
 #define SCREEN_HEIGHT SCREEN_DISTANCE * 27.0 / 180.0	// the actual height of the rendering screen.
-#define TILING_FACTOR 0.5								// how long is a color square in the world coordinates
+#define TILING_FACTOR 0.1								// how long is a color square in the world coordinates
 #define IlluminantD65 0.3127, 0.3291					
 #define GAMMA_REC709 0
 
@@ -155,9 +155,9 @@ spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& sp)
 	headlight_coeff /= divide;
 	for (int i = 0; i < 400; i++)
 	{
-		double freq_orig = (((double)i + 380.0) / 1e9) / C;
+		double freq_orig = C / (((double)i + 380.0) / 1e9);
 		double freq_trans = freq_orig * (Beta * C * global_time - pos.x) / (gamma * Beta * C * global_time - pos.x / gamma);
-		double wl = freq_trans * C * 1e9 - 380;
+		double wl = (C / freq_trans) * 1e9 - 380;
 		int wl_int = wl;
 		if (wl_int < 0) continue;
 		double wl_remain = wl - wl_int;
