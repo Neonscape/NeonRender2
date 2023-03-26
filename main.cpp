@@ -37,6 +37,10 @@ struct RGB
 	unsigned char R;
 	unsigned char G;
 	unsigned char B;
+	void print(ofstream& os)
+	{
+		os << "(" << (int)R << ", " << (int)G << ", " << (int)B << ")";
+	}
 };
 struct spectrum_1step
 {
@@ -91,7 +95,7 @@ struct color_system
 
 double gamma;												// coefficient 2
 double global_time = -20;									// the time when the image is captured
-RGB res_matrix[1920][1080];									// the image matrix, where (0, 0) is the top left corner of the rendering screen (from the observer side).
+RGB res_matrix[3840][2160];									// the image matrix, where (0, 0) is the top left corner of the rendering screen (from the observer side).
 double color_table[400][3];
 int divide = 1;
 double grid_size = 100;
@@ -160,9 +164,9 @@ spectrum_1step convert_spectrum(Vector3 pos, spectrum_1step& sp)
 	headlight_coeff /= divide;
 	for (int i = 0; i < 400; i++)
 	{
-		double freq_orig = (((double)i + 380.0) / 1e9) / C;
+		double freq_orig = C / (((double)i + 380.0) / 1e9);
 		double freq_trans = freq_orig * (Beta * C * global_time - pos.x) / (gamma * Beta * C * global_time - pos.x / gamma);
-		double wl = freq_trans * C * 1e9 - 380;
+		double wl = (C / freq_trans) * 1e9 - 380;
 		int wl_int = wl;
 		if (wl_int < 0) continue;
 		double wl_remain = wl - wl_int;
@@ -301,7 +305,7 @@ void sample(int st_y, int st_z, int ed_y, int ed_z, int& cnt, int id)
 	s += ".log";
 	ofstream os(s);
 	os << "starting the sampling process " << id << endl;
-	os << "starting from (" << st_y << ", " << st_z << ") to " << ed_y << ", " << ed_z << ")" << endl;
+	os << "starting from (" << st_y << ", " << st_z << ") to (" << ed_y << ", " << ed_z << ")" << endl;
 	//time_t st = 0, c = 0;
 	//st = clock();
 
@@ -364,8 +368,11 @@ void sample(int st_y, int st_z, int ed_y, int ed_z, int& cnt, int id)
 				os << "converting spectrum 2";
 				temp = convert_spectrum(hit, spec2);
 			}
-			os << "for " << i << "and" << j << endl;
+			os << "for (" << i << ", " << j << ")" << endl;
 			res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j] = spectrum_to_rgb(temp, SMPTE_SYSTEM);
+			os << "result is ";
+			res_matrix[i + (RES_WIDTH >> 1)][(RES_HEIGHT >> 1) - j].print(os);
+			os << endl;
 		}
 	}
 	os.close();
@@ -414,8 +421,8 @@ int main()
 		thread tlist[20];
 		for (int i = 0; i < threads; i++)
 		{
-			tlist[i * 2] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), -(RES_HEIGHT >> 1), -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, 0, ref(cnts[i * 2]), i * 2 + 1);
-			tlist[i * 2 + 1] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), 1, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, (RES_WIDTH >> 1), ref(cnts[i * 2 + 1]), i * 2 + 2);
+			tlist[i * 2] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), 0, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, -(RES_HEIGHT >> 1), ref(cnts[i * 2]), i * 2 + 1);
+			tlist[i * 2 + 1] = thread(sample, (-(RES_WIDTH >> 1) + del_y * i), (RES_WIDTH >> 1), -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, 1, ref(cnts[i * 2 + 1]), i * 2 + 2);
 			//sample((-(RES_WIDTH >> 1) + del_y * i), -(RES_HEIGHT >> 1), -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, 0, cnts[i * 2]);
 			//sample((-(RES_WIDTH >> 1) + del_y * i), 1, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, (RES_WIDTH >> 1), cnts[i * 2 + 1]);
 		}
