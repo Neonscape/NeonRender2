@@ -26,7 +26,7 @@ int INITIAL_TIME = -20;								// the 0 is when the plane moves to the origin
 #define SCREEN_DISTANCE 1000							// the distance of the rendering screen to the observer
 int SCREEN_WIDTH = SCREEN_DISTANCE * 39.6 / 180.0;	// the actual width of the rendering screen, here I used the 35mm Movie Film Standard.
 int SCREEN_HEIGHT = SCREEN_DISTANCE * 27.0 / 180.0;	// the actual height of the rendering screen.
-int TILING_FACTOR = 10;							// how long is a color square in the world coordinates
+double TILING_FACTOR = 10;							// how long is a color square in the world coordinates
 #define IlluminantD65 0.3127, 0.3291					
 #define GAMMA_REC709 0
 
@@ -395,9 +395,26 @@ void output_image(CImg<unsigned char>& img)
 		}
 	}
 }
-
 int threads = 1;
-int cnts[20];
+int cnts[200];
+time_t st;
+void show_progress()
+{
+	int total = 0;
+	while (total < (RES_WIDTH - 1) * (RES_HEIGHT - 1))
+	{
+		total = 0;
+		for (int i = 0; i < 200; i++)
+		{
+			total += cnts[i];
+		}
+		time_t cur = clock();
+		time_t rem = (int)((double)cur / (double)((double)total / (double)(RES_WIDTH * RES_HEIGHT))) - cur;
+		rem /= 1000;
+		cout << "ETA : " << rem / 60 << " min, " << rem % 60 << " s, total progress" << (int)((double)total / (double)(RES_WIDTH * RES_HEIGHT) * 100) << "%" << endl;
+	}
+}
+
 int main()
 {
 	read_color_table();
@@ -410,6 +427,7 @@ int main()
 	while (1)
 	{
 		memset(res_matrix, 0, sizeof(res_matrix));
+		memset(cnts, 0, sizeof(cnts));
 		cout << "please input the resolution X and Y" << endl;
 		cin >> RES_WIDTH >> RES_HEIGHT;
 		if (!RES_WIDTH && !RES_HEIGHT)break;
@@ -425,7 +443,8 @@ int main()
 		cin >> TILING_FACTOR;
 		cout << "please input the initial time" << endl;
 		cin >> INITIAL_TIME;
-		SCREEN_HEIGHT = SCREEN_WIDTH * 27 / 39.6;
+		st = clock();
+		SCREEN_HEIGHT = SCREEN_WIDTH * RES_HEIGHT / RES_WIDTH;
 		int del_y = RES_WIDTH / threads;
 		gamma = pow((1.0 - Beta * Beta), -0.5);
 		CImg<unsigned char> res_img(RES_WIDTH, RES_HEIGHT, 1, 3, 0);
@@ -437,10 +456,12 @@ int main()
 			//sample((-(RES_WIDTH >> 1) + del_y * i), -(RES_HEIGHT >> 1), -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, 0, cnts[i * 2]);
 			//sample((-(RES_WIDTH >> 1) + del_y * i), 1, -(RES_WIDTH >> 1) + del_y * (i + 1) - 1, (RES_WIDTH >> 1), cnts[i * 2 + 1]);
 		}
+		thread count(show_progress);
 		for (auto& t : tlist)
 		{
 			if (t.joinable()) t.join();
 		}
+		count.join();
 		try
 		{
 			output_image(res_img);
